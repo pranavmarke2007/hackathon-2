@@ -1,43 +1,113 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AI Scheduler</title>
-    <style>
-        body { font-family: Arial; }
+<title>AI Scheduler</title>
 
-        #emails {
-            max-height: 300px;
-            overflow-y: scroll;
-            border: 1px solid #ccc;
-            padding: 10px;
-        }
+<style>
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: #f5f7fb;
+}
 
-        #calendar {
-            margin-top: 20px;
-            border: 1px solid black;
-            padding: 10px;
-        }
+.container {
+    display: flex;
+}
 
-        .busy {
-            color: red;
-        }
+.sidebar {
+    width: 220px;
+    height: 100vh;
+    background: linear-gradient(180deg, #4e54c8, #8f94fb);
+    color: white;
+    padding: 20px;
+}
 
-        .free {
-            color: green;
-        }
-    </style>
+.main {
+    flex: 1;
+    padding: 20px;
+}
+
+.card {
+    background: white;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.right {
+    width: 320px;
+    padding: 20px;
+}
+
+button {
+    background: #4e54c8;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+#dayView {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.time-slot {
+    padding: 10px;
+    border-radius: 6px;
+    color: white;
+}
+
+.free-slot {
+    background: linear-gradient(90deg, #4facfe, #00f2fe);
+}
+
+.busy-slot {
+    background: #ff6b6b;
+}
+</style>
 </head>
+
 <body>
 
-<h2>📧 Emails</h2>
-<button onclick="loadEmails()">Refresh Emails</button>
-<div id="emails"></div>
+<div class="container">
 
-<h2>📅 Calendar (Dummy)</h2>
-<button onclick="loadCalendar()">Load Calendar</button>
-<div id="calendar"></div>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <h2>🤖 Inbox AI</h2>
+        <div>📧 Inbox</div>
+        <div>📅 Meetings</div>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+        <h2>AI Email Coordination Assistant</h2>
+        <button onclick="loadEmails()">Refresh Emails</button>
+        <div id="emails"></div>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="right">
+
+        <div class="card">
+            <h3>📅 Select Date</h3>
+            <input type="date" id="datePicker" onchange="loadDayView()">
+        </div>
+
+        <div class="card">
+            <h3>🕒 Day Schedule</h3>
+            <div id="dayView"></div>
+        </div>
+
+    </div>
+
+</div>
 
 <script>
+
 function loadEmails() {
     fetch("/emails")
     .then(res => res.json())
@@ -47,13 +117,12 @@ function loadEmails() {
 
         data.forEach(mail => {
             let div = document.createElement("div");
+            div.className = "card";
 
             div.innerHTML = `
-                <b>From:</b> ${mail.from}<br>
-                <b>Subject:</b> ${mail.subject}<br>
+                <b>${mail.from}</b>
                 <p>${mail.body}</p>
-                <b>Status:</b> ${mail.status || ""}
-                <hr>
+                <small>Status: ${mail.status}</small>
             `;
 
             container.appendChild(div);
@@ -61,50 +130,35 @@ function loadEmails() {
     });
 }
 
-function loadCalendar() {
-    fetch("/calendar")
+function loadDayView() {
+    let date = document.getElementById("datePicker").value;
+
+    fetch(`/day_slots/${date}`)
     .then(res => res.json())
     .then(data => {
-        let container = document.getElementById("calendar");
+
+        let container = document.getElementById("dayView");
         container.innerHTML = "";
 
         data.forEach(slot => {
             let div = document.createElement("div");
-            div.className = "busy";
 
-            div.innerHTML = `
-                🔴 Busy: ${slot[0]} → ${slot[1]}
-            `;
+            let cls = slot.status === "busy"
+                ? "time-slot busy-slot"
+                : "time-slot free-slot";
+
+            div.className = cls;
+            div.innerHTML = `${slot.display}`;
 
             container.appendChild(div);
         });
+
     });
 }
 
 window.onload = () => {
     loadEmails();
-    loadCalendar();
 };
-
-function loadCalendar() {
-    fetch("/calendar")
-    .then(res => res.json())
-    .then(data => {
-        let container = document.getElementById("calendar");
-        container.innerHTML = "";
-
-        data.forEach(slot => {
-            let div = document.createElement("div");
-
-            div.innerHTML = `
-                🔴 Busy: ${slot[0]} → ${slot[1]}
-                <hr>
-            `;
-
-            container.appendChild(div);
-        });
-    });
-}
 
 </script>
 

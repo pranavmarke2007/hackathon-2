@@ -1,49 +1,92 @@
 from flask import Flask, jsonify, render_template
 from email_reader import fetch_emails
-from parser import extract_time
-from calendar_api import check_availability, create_event
+from calendar_api import check_availability, create_event, get_day_slots, suggest_alternatives
 from email_sender import send_email
-
+from datetime import datetime
 app = Flask(__name__)
 
 @app.route("/")
 def home():
     return render_template("index.html")
 
+
 @app.route("/emails")
 def get_emails():
+    import dateparser
+    import re
+
     emails = fetch_emails()
 
     for mail in emails:
         body = mail["body"]
         sender = mail["from"]
 
-        if "meeting" in body.lower() or "free" in body.lower():
-            meeting_time = extract_time(body)
+        print("BODY:", body)
 
-            if meeting_time:
-                free = check_availability(meeting_time)
+        # 🔥 Extract time
+        match = re.search(r'(\d{1,2}.*?(am|pm))', body.lower())
 
-                if free:
-                    create_event(meeting_time)
-                    send_email(sender, "Meeting Confirmed", f"I am free at {meeting_time}")
-                    mail["status"] = "✅ Scheduled"
-                else:
-                    send_email(sender, "Not Available", "I am not free at that time")
-                    mail["status"] = "❌ Busy"
-            else:
-                mail["status"] = "⚠️ Time not detected"
+        if match:
+            time_text = match.group()
         else:
-            mail["status"] = "Ignored"
+            time_text = body
+
+        print("EXTRACTED:", time_text)
+
+        meeting_time = dateparser.parse(
+            time_text,
+            settings={
+                "PREFER_DATES_FROM": "future",
+                "RELATIVE_BASE": datetime.now()
+            }
+        )
+
+        print("PARSED:", meeting_time)
+
+        if meeting_time:
+
+            free = check_availability(meeting_time)
+
+            if free:
+                # ✅ BOOK SLOT
+                create_event(meeting_time)
+
+                send_email(
+                    sender,
+                    "Meeting Confirmed",
+                    f" Your meeting is scheduled at {meeting_time.strftime('%I:%M %p on %d %B')}"
+                )
+
+                mail["status"] = "✅ Scheduled"
+
+            else:
+                # ❌ SLOT ALREADY BOOKED
+                alternatives = suggest_alternatives(meeting_time)
+
+                alt_text = "\n".join(alternatives) if alternatives else "No slots available"
+
+                send_email(
+                    sender,
+                    "Slot Already Scheduled",
+                    f""" This slot is already scheduled.
+
+                        Suggested free slots:
+                        {alt_text}
+                        """
+                )
+
+                mail["status"] = "❌ Already Scheduled + Alternatives Sent"
+
+        else:
+            mail["status"] = "⚠️ Time not detected"
 
     return jsonify(emails)
 
-if __name__ == "__main__":
-    app.run(debug=True)
-from calendar_api import get_busy_slots
+@app.route("/day_slots/<date>")
+def day_slots(date):
+    return jsonify(get_day_slots(date))
 
-@app.route("/calendar")
-def calendar():
-    return jsonify(get_busy_slots())    
-print("BODY:", body)
-print("TIME:", meeting_time)
+
+if __name__ == "__main__":
+    print("SERVER STARTING...")
+    app.run(debug=True)
