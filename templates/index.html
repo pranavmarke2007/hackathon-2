@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Scheduler</title>
+    <style>
+        body { font-family: Arial; }
+
+        #emails {
+            max-height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        #calendar {
+            margin-top: 20px;
+            border: 1px solid black;
+            padding: 10px;
+        }
+
+        .busy {
+            color: red;
+        }
+
+        .free {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+
+<h2>📧 Emails</h2>
+<button onclick="loadEmails()">Refresh Emails</button>
+<div id="emails"></div>
+
+<h2>📅 Calendar (Dummy)</h2>
+<button onclick="loadCalendar()">Load Calendar</button>
+<div id="calendar"></div>
+
+<script>
+function loadEmails() {
+    fetch("/emails")
+    .then(res => res.json())
+    .then(data => {
+        let container = document.getElementById("emails");
+        container.innerHTML = "";
+
+        data.forEach(mail => {
+            let div = document.createElement("div");
+
+            div.innerHTML = `
+                <b>From:</b> ${mail.from}<br>
+                <b>Subject:</b> ${mail.subject}<br>
+                <p>${mail.body}</p>
+                <b>Status:</b> ${mail.status || ""}
+                <hr>
+            `;
+
+            container.appendChild(div);
+        });
+    });
+}
+
+function loadCalendar() {
+    fetch("/calendar")
+    .then(res => res.json())
+    .then(data => {
+        let container = document.getElementById("calendar");
+        container.innerHTML = "";
+
+        data.forEach(slot => {
+            let div = document.createElement("div");
+            div.className = "busy";
+
+            div.innerHTML = `
+                🔴 Busy: ${slot[0]} → ${slot[1]}
+            `;
+
+            container.appendChild(div);
+        });
+    });
+}
+
+window.onload = () => {
+    loadEmails();
+    loadCalendar();
+};
+
+function loadCalendar() {
+    fetch("/calendar")
+    .then(res => res.json())
+    .then(data => {
+        let container = document.getElementById("calendar");
+        container.innerHTML = "";
+
+        data.forEach(slot => {
+            let div = document.createElement("div");
+
+            div.innerHTML = `
+                🔴 Busy: ${slot[0]} → ${slot[1]}
+                <hr>
+            `;
+
+            container.appendChild(div);
+        });
+    });
+}
+
+</script>
+
+</body>
+</html>
