@@ -11,30 +11,45 @@ def get_service():
     return build("calendar", "v3", credentials=creds)
 
 
-# ✅ FIXED AVAILABILITY CHECK
+# ✅ CHECK AVAILABILITY (NO OVERLAP)
 def check_availability(start_time):
     service = get_service()
 
-    # 🔥 make timezone aware
-    start_time = IST.localize(start_time)
+    if start_time.tzinfo is None:
+        start_time = IST.localize(start_time)
+
     end_time = start_time + timedelta(hours=1)
 
     events = service.events().list(
         calendarId='primary',
         timeMin=start_time.isoformat(),
         timeMax=end_time.isoformat(),
-        singleEvents=True,
-        orderBy='startTime'
+        singleEvents=True
     ).execute().get('items', [])
 
-    return len(events) == 0
+    for event in events:
+        s = event['start'].get('dateTime')
+        e = event['end'].get('dateTime')
+
+        if not s or not e:
+            continue
+
+        existing_start = datetime.fromisoformat(s)
+        existing_end = datetime.fromisoformat(e)
+
+        if start_time < existing_end and end_time > existing_start:
+            return False
+
+    return True
 
 
 # ✅ CREATE EVENT
-def create_event(start_time):
+def create_event(start_time, attendee_emails=None):
     service = get_service()
 
-    start_time = IST.localize(start_time)
+    if start_time.tzinfo is None:
+        start_time = IST.localize(start_time)
+
     end_time = start_time + timedelta(hours=1)
 
     event = {
@@ -47,33 +62,60 @@ def create_event(start_time):
             'dateTime': end_time.isoformat(),
             'timeZone': 'Asia/Kolkata'
         },
+        'attendees': [{'email': e} for e in (attendee_emails or [])],
     }
 
-    service.events().insert(calendarId='primary', body=event).execute()
+    service.events().insert(
+        calendarId='primary',
+        body=event,
+        sendUpdates='all'
+    ).execute()
+
+
+# ✅ DAY SLOTS
+def get_day_slots(date_str):
+    start = IST.localize(datetime.fromisoformat(date_str))
+    slots = []
+
+    for h in range(9, 18):
+        slot = start.replace(hour=h)
+
+        status = "free" if check_availability(slot) else "busy"
+
+        slots.append({
+            "display": f"{h%12 or 12} {'AM' if h<12 else 'PM'}",
+            "status": status
+        })
+
+    return slots
 
 
 # ✅ SUGGEST ALTERNATIVES
 def suggest_alternatives(start_time):
     suggestions = []
 
-    current = start_time.replace(minute=0, second=0, microsecond=0)
+    if start_time.tzinfo is None:
+        start_time = IST.localize(start_time)
 
-    for day in range(0, 2):
+    base = start_time.replace(minute=0, second=0, microsecond=0)
 
-        base_day = current + timedelta(days=day)
+    for day in range(0, 3):
+        current_day = base + timedelta(days=day)
 
-        for hour in range(9, 17):   # 9 AM to 5 PM
+        for hour in range(9, 18):
+            new_time = current_day.replace(hour=hour)
 
-            new_time = base_day.replace(hour=hour)
-
-            if new_time <= datetime.now():
+            if new_time <= datetime.now(IST):
                 continue
 
             if new_time == start_time:
                 continue
 
             if check_availability(new_time):
-                suggestions.append(new_time.strftime("%d %B %I:%M %p"))
+                suggestions.append({
+                    "datetime": new_time,
+                    "display": new_time.strftime("%d %B %I:%M %p")
+                })
 
             if len(suggestions) >= 5:
                 return suggestions
@@ -81,43 +123,34 @@ def suggest_alternatives(start_time):
     return suggestions
 
 
-# ✅ DAY SLOTS FIXED
-def get_day_slots(date_str):
+# ✅ MULTI USER AVAILABILITY
+def get_multi_user_availability(date, participants):
     service = get_service()
 
-    start = IST.localize(datetime.fromisoformat(date_str))
-    end = start + timedelta(days=1)
+    start = IST.localize(datetime.fromisoformat(date))
+    result = {}
 
-    events = service.events().list(
-        calendarId='primary',
-        timeMin=start.isoformat(),
-        timeMax=end.isoformat(),
-        singleEvents=True,
-        orderBy='startTime'
-    ).execute().get('items', [])
+    for user in participants:
+        result[user] = []
 
-    busy = []
-    for e in events:
-        s = e['start'].get('dateTime')
-        e_ = e['end'].get('dateTime')
+        for h in range(9, 18):
+            slot_start = start.replace(hour=h)
+            slot_end = slot_start + timedelta(hours=1)
 
-        if s and e_:
-            busy.append((datetime.fromisoformat(s), datetime.fromisoformat(e_)))
+            body = {
+                "timeMin": slot_start.isoformat(),
+                "timeMax": slot_end.isoformat(),
+                "items": [{"id": user}]
+            }
 
-    slots = []
+            res = service.freebusy().query(body=body).execute()
+            busy = res["calendars"].get(user, {}).get("busy", [])
 
-    for h in range(9, 18):
-        is_busy = False
+            status = "busy" if busy else "free"
 
-        for s, e_ in busy:
-            if s.hour <= h < e_.hour:
-                is_busy = True
-                break
+            result[user].append({
+                "hour": h,
+                "status": status
+            })
 
-        slots.append({
-            "hour": h,
-            "display": f"{h%12 or 12} {'AM' if h<12 else 'PM'}",
-            "status": "busy" if is_busy else "free"
-        })
-
-    return slots
+    return result

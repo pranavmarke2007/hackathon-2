@@ -1,164 +1,281 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>AI Scheduler</title>
+<title>Inbox AI</title>
 
 <style>
 body {
-    margin: 0;
-    font-family: 'Segoe UI', sans-serif;
-    background: #f5f7fb;
+    margin:0;
+    font-family:'Segoe UI';
+    background:#f5f7ff;
 }
 
-.container {
-    display: flex;
-}
+.app { display:flex; height:100vh; }
 
 .sidebar {
-    width: 220px;
-    height: 100vh;
-    background: linear-gradient(180deg, #4e54c8, #8f94fb);
-    color: white;
-    padding: 20px;
+    width:220px;
+    background:linear-gradient(180deg,#4f46e5,#6366f1);
+    color:white;
+    padding:20px;
 }
+.sidebar h2 { margin-bottom:30px; }
+
+.nav div {
+    padding:10px;
+    border-radius:8px;
+    margin:8px 0;
+    cursor:pointer;
+}
+.nav div:hover { background:rgba(255,255,255,0.2); }
 
 .main {
-    flex: 1;
-    padding: 20px;
+    flex:1;
+    display:grid;
+    grid-template-columns:2fr 1fr;
+    gap:20px;
+    padding:20px;
 }
 
 .card {
-    background: white;
-    padding: 15px;
-    margin-bottom: 15px;
-    border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    background:white;
+    border-radius:12px;
+    padding:20px;
+    box-shadow:0 5px 20px rgba(0,0,0,0.08);
 }
 
-.right {
-    width: 320px;
-    padding: 20px;
+.msg {
+    margin:12px 0;
+    padding:10px;
+    border-radius:8px;
+    background:#eef2ff;
 }
 
-button {
-    background: #4e54c8;
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
+.status {
+    font-size:12px;
+    margin-top:5px;
+    font-weight:bold;
 }
 
-#dayView {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+.btn {
+    background:#4f46e5;
+    color:white;
+    padding:8px 12px;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
 }
 
-.time-slot {
-    padding: 10px;
-    border-radius: 6px;
-    color: white;
+.calendar {
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:5px;
+    margin-top:10px;
 }
 
-.free-slot {
-    background: linear-gradient(90deg, #4facfe, #00f2fe);
+.day {
+    padding:8px;
+    text-align:center;
+    border-radius:6px;
+    background:#eef2ff;
+    cursor:pointer;
 }
 
-.busy-slot {
-    background: #ff6b6b;
+.day:hover { background:#6366f1; color:white; }
+
+.slot {
+    padding:6px;
+    border-radius:6px;
+    margin:4px 0;
 }
+
+.free { background:#22c55e; color:white; }
+.busy { background:#ef4444; color:white; }
+
+.overview-bar {
+    height:12px;
+    border-radius:10px;
+    background:linear-gradient(90deg,#6366f1,#22c55e);
+    margin-top:10px;
+}
+
+.bar-container { display:flex; }
+
+.bar {
+    height:10px;
+    flex:1;
+    margin:2px;
+    border-radius:3px;
+}
+
+.free-bar { background:#22c55e; }
+.busy-bar { background:#cbd5f5; }
+
 </style>
 </head>
 
 <body>
 
-<div class="container">
+<div class="app">
 
-    <!-- Sidebar -->
-    <div class="sidebar">
-        <h2>🤖 Inbox AI</h2>
-        <div>📧 Inbox</div>
-        <div>📅 Meetings</div>
+<div class="sidebar">
+    <h2>🤖 Inbox AI</h2>
+    <div class="nav">
+        <div onclick="loadInbox()">📥 Inbox</div>
+        <div onclick="loadMeetings()">📅 Meetings</div>
+        <div>📊 Insights</div>
+        <div>⚙️ Settings</div>
     </div>
+</div>
 
-    <!-- Main -->
-    <div class="main">
-        <h2>AI Email Coordination Assistant</h2>
-        <button onclick="loadEmails()">Refresh Emails</button>
-        <div id="emails"></div>
-    </div>
+<div class="main">
 
-    <!-- Right Panel -->
-    <div class="right">
+<div class="card">
 
-        <div class="card">
-            <h3>📅 Select Date</h3>
-            <input type="date" id="datePicker" onchange="loadDayView()">
-        </div>
+<h2>AI Email Coordination</h2>
+<button class="btn" onclick="loadInbox()">Load Inbox</button>
 
-        <div class="card">
-            <h3>🕒 Day Schedule</h3>
-            <div id="dayView"></div>
-        </div>
+<div id="chat"></div>
 
-    </div>
+</div>
+
+<div class="card">
+
+<h3>Availability Overview</h3>
+<div id="overview"></div>
+
+<h3 style="margin-top:20px;">Calendar</h3>
+<div id="month"></div>
+<div class="calendar" id="calendar"></div>
+
+<h3 style="margin-top:20px;">Slots</h3>
+<div id="slots"></div>
+
+<h3 style="margin-top:20px;">Team Availability</h3>
+<div id="multi"></div>
+
+</div>
+
+</div>
 
 </div>
 
 <script>
 
-function loadEmails() {
-    fetch("/emails")
-    .then(res => res.json())
-    .then(data => {
-        let container = document.getElementById("emails");
-        container.innerHTML = "";
+let current = new Date();
 
-        data.forEach(mail => {
-            let div = document.createElement("div");
-            div.className = "card";
+/* 📅 CALENDAR */
+function renderCalendar(){
+    let cal=document.getElementById("calendar");
+    let month=document.getElementById("month");
 
-            div.innerHTML = `
-                <b>${mail.from}</b>
-                <p>${mail.body}</p>
-                <small>Status: ${mail.status}</small>
-            `;
+    cal.innerHTML="";
+    month.innerText=current.toLocaleString('default',{month:'long',year:'numeric'});
 
-            container.appendChild(div);
-        });
+    let y=current.getFullYear();
+    let m=current.getMonth();
+
+    let first=new Date(y,m,1).getDay();
+    let days=new Date(y,m+1,0).getDate();
+
+    for(let i=0;i<first;i++) cal.innerHTML+="<div></div>";
+
+    for(let d=1;d<=days;d++){
+        cal.innerHTML+=`
+        <div class="day" onclick="loadSlots(${y},${m+1},${d})">${d}</div>`;
+    }
+}
+
+/* 📩 EMAILS */
+async function loadInbox(){
+    let res = await fetch('/emails');
+    let data = await res.json();
+    renderEmails(data);
+}
+
+async function loadMeetings(){
+    let res = await fetch('/meetings');
+    let data = await res.json();
+    renderEmails(data);
+}
+
+function renderEmails(data){
+    let chat = document.getElementById("chat");
+    chat.innerHTML = "";
+
+    data.forEach(m => {
+        chat.innerHTML += `
+        <div class="msg">
+            <div><b>${m.from}</b> ${m.tag || ""}</div>
+            <div>${m.body}</div>
+            <div class="status">${m.status}</div>
+
+        ${m.alternatives ? `
+        <div style="margin-top:8px;">
+        ${m.alternatives.map(a => `
+            <div style="background:#e0e7ff; padding:5px; border-radius:6px; margin-top:3px;">
+                ⏰ ${a.display}
+            </div>
+        `).join("")}
+    </div>
+` : ""}
+        </div>`;
     });
 }
 
-function loadDayView() {
-    let date = document.getElementById("datePicker").value;
+/* ⏱️ SLOTS */
+async function loadSlots(y,m,d){
+    let date=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 
-    fetch(`/day_slots/${date}`)
-    .then(res => res.json())
-    .then(data => {
+    let res=await fetch(`/day_slots/${date}`);
+    let data=await res.json();
 
-        let container = document.getElementById("dayView");
-        container.innerHTML = "";
+    let s=document.getElementById("slots");
+    s.innerHTML="";
 
-        data.forEach(slot => {
-            let div = document.createElement("div");
-
-            let cls = slot.status === "busy"
-                ? "time-slot busy-slot"
-                : "time-slot free-slot";
-
-            div.className = cls;
-            div.innerHTML = `${slot.display}`;
-
-            container.appendChild(div);
-        });
-
+    data.forEach(x=>{
+        s.innerHTML+=`<div class="slot ${x.status}">${x.display}</div>`;
     });
+
+    renderOverview(data);
+    loadMulti(date);
 }
 
-window.onload = () => {
-    loadEmails();
-};
+/* 📊 OVERVIEW */
+function renderOverview(slots){
+    let free=slots.filter(s=>s.status==="free").length;
+    let total=slots.length;
+
+    document.getElementById("overview").innerHTML=
+    `<div class="overview-bar" style="width:${(free/total)*100}%"></div>
+     <p>${free}/${total} free slots</p>`;
+}
+
+/* 👥 MULTI USER */
+async function loadMulti(date){
+    let participants=[
+        "pranavmarke66@gmail.com",
+        "rathodpranay957@gmail.com"
+    ];
+
+    let res=await fetch(`/multi_availability/${date}?participants=${participants.join(",")}`);
+    let data=await res.json();
+
+    let container=document.getElementById("multi");
+    container.innerHTML="";
+
+    for(let user in data){
+        let row=`<div>${user}</div><div class="bar-container">`;
+
+        data[user].forEach(s=>{
+            row+=`<div class="bar ${s.status==="free"?"free-bar":"busy-bar"}"></div>`;
+        });
+
+        row+="</div>";
+        container.innerHTML+=row;
+    }
+}
+
+renderCalendar();
 
 </script>
 
